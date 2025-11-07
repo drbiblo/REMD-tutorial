@@ -499,3 +499,110 @@ st.markdown(
     At this point, your system is ready for a REMD + PLUMED run (to be detailed in the next step).
     """
 )
+
+st.markdown("---")
+st.subheader("12. Launching the REMD Simulation")
+
+st.markdown(
+    """
+With the four replica directories (`0/`, `1/`, `2/`, `3/`) prepared and `plumed.dat`
+copied into each, we now run Replica Exchange Molecular Dynamics (REMD) in vacuum.
+
+We use **4 replicas at 300, 366, 547, and 996 K**. For a tiny system like alanine dipeptide
+in vacuum, a wide temperature ladder is intentional:
+
+- Higher replicas (547 K, 996 K) can cross otherwise prohibitive φ/ψ barriers.
+- Lower replicas (300 K, 366 K) preserve physically relevant sampling.
+- Frequent exchanges between neighboring replicas allow each *conformation* to visit
+  multiple temperatures, improving exploration of the Ramachandran landscape and
+  enhancing convergence of 1D/2D free energy profiles.
+"""
+)
+
+st.markdown("**Run the REMD job:**")
+
+st.code(
+    """export OMP_NUM_THREADS=2
+mpirun -np 4 gmx_mpi mdrun -v \\
+  -multidir 0 1 2 3 \\
+  -deffnm remd \\
+  -replex 100 \\
+  -plumed plumed.dat \\
+  -ntomp $OMP_NUM_THREADS \\
+  -pin on""",
+    language="bash",
+)
+
+st.markdown(
+    """
+### What this command is doing
+
+**`export OMP_NUM_THREADS=2`**  
+Sets 2 OpenMP threads per MPI rank. Together with `-ntomp $OMP_NUM_THREADS`, this gives each replica 2 threads.
+
+**`mpirun -np 4`**  
+Starts 4 MPI processes → one for each replica. This matches our 4 directories: `0/`, `1/`, `2/`, `3/`.
+
+**`gmx_mpi mdrun`**  
+Runs the MPI-enabled `mdrun`, required for multi-replica (`-multidir`) execution.
+
+**`-multidir 0 1 2 3`**  
+Tells GROMACS:
+- simulation 0 uses `0/remd.tpr` (300 K),
+- simulation 1 uses `1/remd.tpr` (366 K),
+- simulation 2 uses `2/remd.tpr` (547 K),
+- simulation 3 uses `3/remd.tpr` (996 K).
+All run simultaneously as one composite REMD job.
+
+**`-deffnm remd`**  
+Sets the base name for outputs in each directory:
+`0/remd.log`, `0/remd.xtc`, ..., `1/remd.log`, etc.
+
+**`-replex 100`**  
+Attempts exchanges between neighboring replicas every 100 MD steps.  
+With `dt = 0.002 ps`, that’s every **0.2 ps**, giving frequent mixing for this small system.
+
+**`-plumed plumed.dat`**  
+Activates PLUMED in each replica using the local `plumed.dat` to monitor (and, if desired,
+bias) φ/ψ. This is what will later let us reconstruct the free energy surfaces.
+
+**`-ntomp $OMP_NUM_THREADS`**  
+Ensures each MPI rank uses the 2 OpenMP threads we exported.
+
+**`-pin on`**  
+Pins threads to physical cores, improving stability and reproducibility of timings and sampling.
+
+---
+### How to read the console output (matches the screenshot)
+
+When things are set up correctly, your terminal will show lines like:
+
+- `This is simulation 0 out of 4 running as a composite GROMACS multi-simulation job.`
+- `This is simulation 1 out of 4 ...`
+- `This is simulation 2 out of 4 ...`
+- `This is simulation 3 out of 4 ...`
+
+This means:
+
+- GROMACS has recognized **4 coupled simulations** (REMD replicas).
+- Each is running with `Using 1 MPI process` and `Using 2 OpenMP threads`
+  — exactly what we requested with `-np 4` and `OMP_NUM_THREADS=2`.
+- For each replica you will see e.g.:
+  `1000000 steps,   2000.0 ps.`
+  which confirms: **1,000,000 steps × 0.002 ps = 2000 ps (2 ns)** per replica.
+
+Near the end, lines like:
+
+- `step 999900, remaining wall clock time: ...`
+
+indicate that the replicas are approaching completion. In the next steps of the tutorial,
+we will use the `remd.log` files to inspect exchange probabilities and then demultiplex
+the trajectories for φ/ψ free energy analysis.
+"""
+)
+
+st.image(
+    "screenshots/screenshot11.png",
+    caption="Example REMD output: four simulations (replicas) detected and propagated as a composite multi-simulation job.",
+    use_container_width=True,
+)
