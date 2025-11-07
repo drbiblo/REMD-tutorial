@@ -1059,6 +1059,240 @@ st.markdown(
     """
 )
 
+# ================== UPLOAD & PLOT: PLUMED FES .dat ==================
+st.subheader("Upload and plot PLUMED FES (.dat)")
+
+st.markdown(
+    """
+    Upload a PLUMED `sum_hills` histogram `.dat` file. The app will detect whether it is:
+    - **1D φ** (header like `#! FIELDS phi file.free ...`)
+    - **1D ψ** (header like `#! FIELDS psi file.free ...`)
+    - **2D (φ, ψ)** (header like `#! FIELDS phi psi file.free ...` or `psi phi file.free ...`)
+    and then plot the corresponding figure. Values are assumed to be in **radians** by default.
+    """,
+)
+
+uploaded = st.file_uploader("Upload .dat file", type=["dat"])
+plot_degrees = st.checkbox("Plot angles in degrees (convert from radians)", value=True)
+
+import io, re
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def _read_lines(file):
+    """Return list of decoded lines from an uploaded Streamlit file-like object."""
+    raw = file.getvalue()
+    try:
+        text = raw.decode("utf-8", errors="ignore")
+    except AttributeError:
+        # already str
+        text = raw
+    return text.splitlines()
+
+def _get_fields(lines):
+    """
+    Find and parse the '#! FIELDS ...' line.
+    Returns a list of lowercase field tokens after 'FIELDS', e.g. ['phi','file.free','der_phi'].
+    """
+    for ln in lines:
+        s = ln.strip()
+        if not s:
+            continue
+        # allow vim-style "N #! FIELDS ..."
+        if re.match(r"^\d+\s+#!\s+FIELDS", s):
+            s = s.split(None, 1)[1]  # remove leading line number
+        if s.startswith("#!") and "FIELDS" in s:
+            # Normalize: remove leading "#!", then split
+            parts = s.replace("#!", "").strip().split()
+            # parts like ['FIELDS','phi','file.free','der_phi',...]
+            try:
+                idx = parts.index("FIELDS")
+                fields = [t.lower() for t in parts[idx+1:]]
+                return fields
+            except ValueError:
+                pass
+    return []
+
+def _numeric_tokens(tokens):
+    """Yield numeric floats from a token list, skipping non-numerics gracefully."""
+    for t in tokens:
+        try:
+            yield float(t)
+        except ValueError:
+            continue
+
+def _parse_1d(lines):
+    """
+    Parse 1D file: returns x (phi or psi) and F (file.free), both numpy arrays.
+    Ignores derivative column if present. Handles header lines & vim numbering.
+    """
+    x_vals, f_vals = [], []
+    for ln in lines:
+        s = ln.strip()
+        if not s:
+            continue
+        # skip headers & comments
+        if s.startswith("#") or s.startswith("!"):
+            continue
+        # skip vim-numbered headers like "12 #! ..."
+        if re.match(r"^\d+\s+#!", s):
+            continue
+        toks = s.split()
+        # Sometimes data lines might start with a stray integer index—strip it if present and the rest are floats
+        # Strategy: just pull the *first two* numeric tokens in the line.
+        nums = list(_numeric_tokens(toks))
+        if len(nums) >= 2:
+            x_vals.append(nums[0])
+            f_vals.append(nums[1])
+    x = np.array(x_vals, dtype=float)
+    F = np.array(f_vals, dtype=float)
+    if F.size:
+        F = F - np.nanmin(F)  # ΔF shift
+    return x, F
+
+def _parse_2d(lines, order=("phi","psi")):
+    """
+    Parse 2D file: returns arrays phi, psi, F.
+    `order` tells us which column order appears in the file ('phi','psi') or ('psi','phi').
+    """
+    xs, ys, Fs = [], [], []
+    first_is = order[0]  # 'phi' or 'psi'
+    for ln in lines:
+        s = ln.strip()
+        if not s:
+            continue
+        if s.startswith("#") or s.startswith("!"):
+            continue
+        if re.match(r"^\d+\s+#!", s):
+            continue
+        toks = s.split()
+        nums = list(_numeric_tokens(toks))
+        if len(nums) < 3:
+            continue
+        a, b, free = nums[0], nums[1], nums[2]
+        if first_is == "phi":
+            phi, psi = a, b
+        else:
+            psi, phi = a, b
+        xs.append(phi)
+        ys.append(psi)
+        Fs.append(free)
+    return np.array(xs), np.array(ys), np.array(Fs)
+
+def _detect_mode(fields):
+    """
+    Decide which plot to do based on FIELDS tokens.
+    Returns one of: '1d-phi', '1d-psi', '2d-phi-psi', '2d-psi-phi', or None.
+    """
+    f = [t.lower() for t in fields]
+    if not f:
+        return None
+    # 1D cases
+    if f[0] == "phi":
+        return "1d-phi"
+    if f[0] == "psi":
+        return "1d-psi"
+    # 2D cases (order may vary)
+    if len(f) >= 3:
+        # look for first two angle names among tokens
+        first_two = f[:2]
+        if first_two == ["phi","psi"]:
+            return "2d-phi-psi"
+        if first_two == ["psi","phi"]:
+            return "2d-psi-phi"
+    return None
+
+def _deg_if_needed(arr):
+    return np.degrees(arr) if plot_degrees else arr
+
+if uploaded is not None:
+    # extra safeguard (user may rename wrongly)
+    if not uploaded.name.lower().endswith(".dat"):
+        st.error("Please upload a `.dat` file.")
+    else:
+        lines = _read_lines(uploaded)
+        fields = _get_fields(lines)
+        mode = _detect_mode(fields)
+
+        if not mode:
+            st.error("Could not detect file type from `#! FIELDS` header. Expected φ/ψ 1D or φ,ψ 2D.")
+        else:
+            if mode == "1d-phi":
+                x, F = _parse_1d(lines)
+                x_plot = _deg_if_needed(x)
+                xlabel = "Dihedral φ (degrees)" if plot_degrees else "Dihedral φ (radians)"
+                fig = plt.figure(figsize=(4.2, 3.0), dpi=150)
+                plt.plot(x_plot, F, lw=1.8)
+                plt.title("1D φ Free Energy", fontsize=11)
+                plt.xlabel(xlabel, fontsize=9)
+                plt.ylabel("Free Energy (kJ/mol, ΔF)", fontsize=9)
+                if plot_degrees:
+                    plt.xlim(-180, 180)
+                    plt.xticks(np.arange(-180, 181, 60))
+                plt.grid(alpha=0.3, linestyle="--")
+                plt.tight_layout()
+                st.pyplot(fig)
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+                st.download_button("Download PNG", data=buf.getvalue(), file_name="FES_phi_1D.png", mime="image/png")
+
+            elif mode == "1d-psi":
+                x, F = _parse_1d(lines)
+                x_plot = _deg_if_needed(x)
+                xlabel = "Dihedral ψ (degrees)" if plot_degrees else "Dihedral ψ (radians)"
+                fig = plt.figure(figsize=(4.2, 3.0), dpi=150)
+                plt.plot(x_plot, F, lw=1.8)
+                plt.title("1D ψ Free Energy", fontsize=11)
+                plt.xlabel(xlabel, fontsize=9)
+                plt.ylabel("Free Energy (kJ/mol, ΔF)", fontsize=9)
+                if plot_degrees:
+                    plt.xlim(-180, 180)
+                    plt.xticks(np.arange(-180, 181, 60))
+                plt.grid(alpha=0.3, linestyle="--")
+                plt.tight_layout()
+                st.pyplot(fig)
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+                st.download_button("Download PNG", data=buf.getvalue(), file_name="FES_psi_1D.png", mime="image/png")
+
+            elif mode in ("2d-phi-psi", "2d-psi-phi"):
+                order = ("phi","psi") if mode == "2d-phi-psi" else ("psi","phi")
+                phi, psi, F = _parse_2d(lines, order=order)
+
+                # Grid & contour
+                df = pd.DataFrame({"phi": phi, "psi": psi, "F": F})
+                pivot = df.pivot_table(index="psi", columns="phi", values="F", aggfunc="mean")
+                psi_vals = np.array(sorted(pivot.index))
+                phi_vals = np.array(sorted(pivot.columns))
+                Z = pivot.loc[psi_vals, phi_vals].values
+
+                phi_plot = _deg_if_needed(phi_vals)
+                psi_plot = _deg_if_needed(psi_vals)
+
+                Zmask = np.ma.masked_invalid(Z)
+                vmin = np.nanmin(Zmask); vmax = np.nanmax(Zmask)
+                levels = np.linspace(vmin, vmax, 15)
+
+                fig, ax = plt.subplots(figsize=(3.8, 3.8), dpi=160)
+                cf = ax.contourf(phi_plot, psi_plot, Zmask, levels=levels)
+                c = ax.contour(phi_plot, psi_plot, Zmask, levels=levels, linewidths=0.6)
+                cb = fig.colorbar(cf, ax=ax, orientation='vertical', pad=0.02, fraction=0.05, shrink=0.82, aspect=22)
+                cb.set_label("Free energy (kJ/mol)", fontsize=8)
+                cb.ax.tick_params(labelsize=8)
+                ax.clabel(c, inline=True, fontsize=7, fmt="%.0f")
+                ax.set_xlabel("φ (deg)" if plot_degrees else "φ (rad)", fontsize=10)
+                ax.set_ylabel("ψ (deg)" if plot_degrees else "ψ (rad)", fontsize=10)
+                ticks = np.arange(-180, 181, 60) if plot_degrees else np.arange(-3.1416, 3.1417, np.pi/3)
+                ax.set_xticks(ticks); ax.set_yticks(ticks)
+                ax.set_aspect('equal', adjustable='box')
+                ax.set_title("2D FES (φ, ψ)", fontsize=11)
+                plt.tight_layout()
+                st.pyplot(fig)
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png", dpi=500, bbox_inches="tight")
+                st.download_button("Download PNG", data=buf.getvalue(), file_name="FES_phi_psi_2D.png", mime="image/png")
+
 st.markdown("---")
 
 # ================== REFERENCES ==================
