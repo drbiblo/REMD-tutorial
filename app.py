@@ -242,7 +242,7 @@ st.markdown(
     """
     #### 4. What this app will do (next sections)
 
-    Below this introduction (in subsequent sections you add), this app is intended to:
+    Below this introduction, this app is intended to:
 
     - present annotated, copy-pasteable REMD and simulation setup blocks for alanine dipeptide,
     - you can compare your results for each step to the figures/screenshots here
