@@ -30,7 +30,7 @@ st.markdown(
                (Faculty page)
             </a>
         </b><br>
-        Tutorial by: <b>Oluwatosin Saibu, Arslan Talipov, Caroline Ayo-Olaojo, Samuel Brown</b>
+        Tutorial by: <b>Oluwatosin Saibu, Arslan Atangulov, Caroline Ayo-Olaojo, Samuel Brown</b>
     </div>
     """,
     unsafe_allow_html=True,
