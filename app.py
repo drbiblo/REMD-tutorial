@@ -258,3 +258,244 @@ st.markdown(
     - and comparison views (vacuum vs solvent, different force fields, etc.).
     """
 )
+
+st.markdown("---")
+
+# ================== STEP-BY-STEP: REMD SETUP ==================
+st.subheader("Step-by-step: REMD setup in vacuum (Alanine dipeptide)")
+
+st.markdown(
+    """
+    Below is the exact sequence we use to prepare a 4-replica REMD in vacuum
+    with **AMBER99SB-ILDN** and PLUMED-ready inputs.
+    """
+)
+
+# ---------- STEP 1 ----------
+st.markdown("### 1. Build topology and coordinates from `dipep.pdb` (vacuum, AMBER99SB-ILDN)")
+
+st.markdown(
+    """
+    Use `pdb2gmx` to generate the topology and starting coordinates.  
+    When prompted:
+    - choose **AMBER99SB-ILDN** (option 6 in this specific environment),
+    - set **water model: none** (since we are in vacuum).
+    """
+)
+
+st.code(
+    "gmx_mpi pdb2gmx -f dipep.pdb -o conf.gro -p topol.top",
+    language="bash",
+)
+
+st.image(
+    "screenshots/screenshot1.png",
+    caption="Example pdb2gmx selection: AMBER99SB-ILDN, no water.",
+    use_container_width=True,
+)
+
+# ---------- STEP 2 ----------
+st.markdown("### 2. Define a finite vacuum box")
+
+st.markdown(
+    """
+    Even in vacuum, GROMACS requires a periodic box. We choose a cubic box with 2 nm padding.
+    """
+)
+
+st.code(
+    "gmx_mpi editconf -f conf.gro -o conf_box.gro -bt cubic -d 2",
+    language="bash",
+)
+
+st.image(
+    "screenshots/screenshot2.png",
+    caption="Defining a cubic vacuum box around alanine dipeptide.",
+    use_container_width=True,
+)
+
+# ---------- STEP 3 ----------
+st.markdown("### 3. Create the minimization `.mdp` file")
+
+st.markdown("Steepest descent minimization in vacuum with short-range cutoffs:")
+
+st.code(
+    r"""cat > min.mdp << 'EOF'
+integrator       = steep
+nsteps           = 50000
+emtol            = 1000
+emstep           = 0.01
+cutoff-scheme    = Verlet
+coulombtype      = Cut-off
+rvdw             = 1.0
+rcoulomb         = 1.0
+rlist            = 1.0
+nstlist          = 20
+constraints      = none
+EOF""",
+    language="bash",
+)
+
+# ---------- STEP 4 ----------
+st.markdown("### 4. Run energy minimization")
+
+st.code(
+    """gmx_mpi grompp -f min.mdp -p topol.top -c conf_box.gro -o min.tpr
+gmx_mpi mdrun  -v -deffnm min""",
+    language="bash",
+)
+
+st.image(
+    "screenshots/screenshot4.png",
+    caption="Minimization run: checking for convergence and stability.",
+    use_container_width=True,
+)
+
+# ---------- STEP 5 ----------
+st.markdown("### 5. Save minimized structure for REMD")
+
+st.code("cp min.gro mini.gro", language="bash")
+
+# ---------- STEP 6 ----------
+st.markdown("### 6. Create an NVT template for REMD replicas")
+
+st.markdown(
+    """
+    We now define a minimal NVT `.mdp` template for each replica.
+    Here we set:
+    - `dt = 0.002 ps`
+    - `nsteps = 1000000` (2 ns; adjust for your needs)
+    - no pressure coupling (vacuum),
+    - no constraints (simple small system).
+    """
+)
+
+st.code(
+    r"""cat > nvt_template.mdp << 'EOF'
+integrator            = md
+dt                    = 0.002
+nsteps                = 1000000
+; outputs
+nstxout-compressed    = 5000
+nstenergy             = 1000
+; cutoffs
+cutoff-scheme         = Verlet
+rvdw                  = 1.0
+rcoulomb              = 1.0
+rlist                 = 1.0
+nstlist               = 20
+; thermostat
+tcoupl                = V-rescale
+tc-grps               = System
+tau_t                 = 0.1
+ref_t                 = XXX   ; to be set per replica
+; vacuum
+pcoupl                = no
+constraints           = none
+EOF""",
+    language="bash",
+)
+
+# ---------- STEP 7 ----------
+st.markdown("### 7. Create per-replica folders and copy inputs")
+
+st.code(
+    """for i in 0 1 2 3; do
+  mkdir -p $i
+  cp topol.top $i/
+  cp mini.gro  $i/
+done""",
+    language="bash",
+)
+
+# ---------- STEP 8 ----------
+st.markdown("### 8. Create replica-specific `.mdp` files with distinct temperatures")
+
+st.markdown(
+    """
+    Here we set a 4-replica ladder (example): 300, 366, 547, 996 K.  
+    Adjust later if optimizing exchange probabilities.
+    """
+)
+
+st.code(
+    r"""cp nvt_template.mdp nvt0.mdp; sed -i 's/^ref_t.*/ref_t                 = 300/' nvt0.mdp
+cp nvt_template.mdp nvt1.mdp; sed -i 's/^ref_t.*/ref_t                 = 366/' nvt1.mdp
+cp nvt_template.mdp nvt2.mdp; sed -i 's/^ref_t.*/ref_t                 = 547/' nvt2.mdp
+cp nvt_template.mdp nvt3.mdp; sed -i 's/^ref_t.*/ref_t                 = 996/' nvt3.mdp""",
+    language="bash",
+)
+
+# ---------- STEP 9 ----------
+st.markdown("### 9. Copy each `.mdp` into its replica folder")
+
+st.code(
+    """cp nvt0.mdp 0/nvt.mdp
+cp nvt1.mdp 1/nvt.mdp
+cp nvt2.mdp 2/nvt.mdp
+cp nvt3.mdp 3/nvt.mdp""",
+    language="bash",
+)
+
+# ---------- STEP 10 ----------
+st.markdown("### 10. Build `.tpr` files for each replica")
+
+st.code(
+    """gmx_mpi grompp -f 0/nvt.mdp -p 0/topol.top -c 0/mini.gro -o 0/remd.tpr -maxwarn 10
+gmx_mpi grompp -f 1/nvt.mdp -p 1/topol.top -c 1/mini.gro -o 1/remd.tpr -maxwarn 10
+gmx_mpi grompp -f 2/nvt.mdp -p 2/topol.top -c 2/mini.gro -o 2/remd.tpr -maxwarn 10
+gmx_mpi grompp -f 3/nvt.mdp -p 3/topol.top -c 3/mini.gro -o 3/remd.tpr -maxwarn 10""",
+    language="bash",
+)
+
+st.image(
+    "screenshots/screenshot10.png",
+    caption="Successful generation of replica TPR files for REMD.",
+    use_container_width=True,
+)
+
+# ---------- STEP 11 ----------
+st.markdown("### 11. Add PLUMED input (φ/ψ) to each replica")
+
+st.markdown(
+    """
+    Download the `plumed.dat` used in this tutorial:
+    """
+)
+
+st.markdown(
+    """
+    <a href="https://raw.githubusercontent.com/drbiblo/FEMD-tutorial/main/plumed.dat"
+       download="plumed.dat"
+       style="
+         display: inline-block;
+         padding: 8px 14px;
+         margin: 4px 0 10px 0;
+         background-color: #2ca02c;
+         color: white;
+         text-decoration: none;
+         border-radius: 6px;
+         font-weight: 500;">
+       ⬇ Download plumed.dat
+    </a>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown("Copy it into each replica directory:")
+
+st.code(
+    r"""if [[ -f plumed.dat ]]; then
+  for d in 0 1 2 3; do cp plumed.dat $d/; done
+  echo "PLUMED file copied to all replicas."
+else
+  echo "WARNING: plumed.dat not found in this folder."
+fi""",
+    language="bash",
+)
+
+st.markdown(
+    """
+    At this point, your system is ready for a REMD + PLUMED run (to be detailed in the next step).
+    """
+)
