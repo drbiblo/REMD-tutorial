@@ -745,7 +745,7 @@ plt.show()""",
 st.image(
     "screenshots/PE_overlap.png",
     caption="Potential energy overlap across replicas. Substantial overlap → healthy exchange acceptance.",
-    width=300,
+    width=180,
 )
 
 st.markdown(
@@ -806,7 +806,7 @@ plumed driver --mf_xtc 0_remd_demux.xtc --plumed plumed.dat""",
 st.image(
     "screenshots/screenshot13.png",
     caption="Running PLUMED driver on a demultiplexed trajectory.",
-    use_container_width=True,
+    width=180,
 )
 
 st.markdown(
@@ -940,7 +940,7 @@ plt.show()""",
 st.image(
     "screenshots/remd_phi_psi.png",
     caption="Example 1D ΔF(ϕ) and ΔF(ψ) profiles.",
-    use_container_width=True,
+    width=180,
 )
 
 st.markdown("**Plot the 2D FES (ϕ, ψ):**")
@@ -1027,7 +1027,7 @@ plt.show()""",
 st.image(
     "screenshots/2D_FES.png",
     caption="Example 2D FES in (ϕ, ψ).",
-    use_container_width=True,
+    width=180,
 )
 
 st.markdown("---")
