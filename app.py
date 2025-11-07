@@ -31,99 +31,134 @@ st.markdown(
 
 st.markdown("---")
 
-# ================== INTRO: MOTIVATION ==================
-left, right = st.columns([1.6, 1.4])
+# ================== INTRO & BACKGROUND ==================
+left, right = st.columns([1.7, 1.3])
 
 with left:
     st.subheader("Why this tutorial?")
 
-  st.markdown(
-    """
-    In a standard single-temperature MD run (e.g. 300 K), alanine dipeptide tends to rattle
-    inside one or two basins for a long time. Crossings between metastable states in the
-    (φ, ψ) landscape can become **rare events**, so any free energy profile you estimate
-    from such a trajectory is at risk of being incomplete or biased.
-
-    **Replica Exchange Molecular Dynamics (REMD)** tackles this by simulating multiple
-    replicas of the *same* system at different temperatures:
-    \\(T_1 < T_2 < \\dots < T_N\\). At regular intervals, neighboring replicas attempt to
-    **exchange configurations**, with a Metropolis acceptance rule chosen so that each
-    temperature still samples its correct Boltzmann ensemble.
-
-    A well-designed temperature ladder ensures:
-    - sufficient **overlap of potential energy distributions** between neighboring replicas,
-    - **reasonable exchange probabilities** (typically on the order of 20–40%),
-    - and the ability for configurations to **diffuse in temperature space**:
-      a structure can move to a higher \\(T\\), cross a barrier in φ/ψ, then return to lower
-      \\(T\\) carrying that new conformation with it.
-
-    Practically, this means the lowest-temperature replica (e.g. 300 K) benefits from
-    barrier-crossing events that would be extremely rare in plain MD, leading to
-    **smoother, better converged 1D and 2D free energy surfaces** along φ and ψ.
-
-    **Metadynamics** provides a complementary route: instead of changing temperature, we
-    introduce a time-dependent bias along chosen collective variables (here φ and ψ).
-    By depositing Gaussians in visited regions of CV space, metadynamics gradually fills
-    free-energy wells and forces exploration of new basins. In the long-time limit,
-    the accumulated bias approximates \\(-F(\\phi, \\psi)\\), giving direct access to the
-    free energy landscape.
-
-    In this tutorial, alanine dipeptide serves as a clean playground to:
-    - construct a sensible REMD temperature ladder,
-    - observe how replica exchanges enhance sampling in φ/ψ space,
-    - and compare those results with 2D metadynamics-based free energy reconstructions.
-    """
-)
-
-with right:
-    st.subheader("A compact, visual model system")
-
     st.markdown(
         """
-        Alanine dipeptide is small, fast to simulate, and rich enough to display:
-        - multiple metastable states,
-        - characteristic Ramachandran basins,
-        - and clear sensitivity to force field and environment.
+        Molecular dynamics (MD) is a powerful tool for exploring conformational dynamics,
+        but **plain single-temperature MD** has a well-known limitation:
+        the system rapidly falls into one or two low-energy basins and then spends most of
+        the trajectory vibrating there.  
+        Transitions that require crossing even moderate free-energy barriers become rare
+        on accessible timescales. As a result:
 
-        This makes it ideal both for teaching and for testing new methods.
+        - free energy profiles \(F(\phi)\), \(F(\psi)\), or \(F(\phi,\psi)\) built from a single
+          300 K trajectory are often **noisy, biased, or incomplete**;
+        - important conformational states may be severely undersampled or completely missed.
         """,
         unsafe_allow_html=True,
     )
 
+with right:
+    st.subheader("What this tutorial delivers")
+
+    st.markdown(
+        """
+        This tutorial walks through:
+
+        - constructing a minimal alanine dipeptide model,
+        - setting up **Replica Exchange MD (REMD)** in vacuum,
+        - applying **2D metadynamics** along φ/ψ,
+        - and reconstructing **1D & 2D free energy surfaces** suitable for analysis and slides.
+
+        All using a system small enough to understand in detail, but rich enough
+        to show real enhanced sampling behavior.
+        """,
+        unsafe_allow_html=True,
+    )
+
+st.markdown("")
+
+# ---- Enhanced sampling background ----
+st.subheader("Why Replica Exchange MD and Metadynamics?")
+
+st.markdown(
+    """
+    In a standard fixed-temperature simulation, the sampling problem is fundamentally kinetic:
+    barrier crossings are rare, so your estimate of the free energy surface is built from a
+    trajectory that has not seen enough of phase space.
+
+    **Replica Exchange Molecular Dynamics (REMD)** tackles this by running multiple replicas
+    of the *same* system at different temperatures
+    \\(T_1 < T_2 < \\dots < T_N\\) simultaneously.
+
+    - High-temperature replicas explore conformational space broadly and cross barriers more easily.
+    - Low-temperature replicas retain sharp, physically relevant distributions.
+    - At fixed intervals, neighboring replicas attempt to **exchange configurations**, using a
+      Metropolis criterion chosen so that each temperature maintains its correct Boltzmann ensemble.
+
+    If the temperature ladder is chosen so that neighboring replicas have overlapping potential
+    energy distributions, the exchange probabilities (typically on the order of a few tenths)
+    are high enough that configurations can perform a **random walk in temperature space**:
+
+    - a configuration heats up → crosses a barrier in \\((\\phi, \\psi)\\),
+    - then cools back down → bringing new conformations into the 300 K ensemble.
+
+    The payoff is that your **lowest-temperature replica** inherits transitions that would be
+    extremely rare in plain MD, yielding **smoother, better-converged 1D and 2D free energy
+    surfaces** along \\(\\phi\\) and \\(\\psi\\).
+
+    **Metadynamics** approaches the same problem from a different direction. Instead of changing
+    temperature, we:
+
+    - identify slow **collective variables** (here \\(\\phi\\) and \\(\\psi\\)),
+    - periodically deposit repulsive Gaussian hills where the system has visited in CV space,
+    - progressively fill free-energy wells, forcing exploration of new regions.
+
+    Under appropriate settings (e.g. well-tempered metadynamics), the accumulated bias
+    approximates \\(-F(\\phi, \\psi)\\), so you can reconstruct the free energy surface directly.
+    For alanine dipeptide, biasing \\(\\phi\\) and \\(\\psi\\) is natural and highly targeted.
+
+    In this tutorial, alanine dipeptide provides a controlled playground to:
+
+    - build and test a sensible REMD temperature ladder,
+    - observe how replica exchanges enhance sampling in \\(\\phi/\\psi\\) space,
+    - and compare these results with metadynamics-based reconstructions of the same landscape.
+    """
+)
+
 st.markdown("---")
 
 # ================== ALANINE DIPEPTIDE: STRUCTURE ==================
-st.subheader("Meet the alanine dipeptide (Ace–Ala–Nme)")
+st.subheader("The model system: Alanine dipeptide (Ace–Ala–Nme)")
 
-c1, c2 = st.columns([1.3, 1.7])
+c1, c2 = st.columns([1.1, 1.9])
 
 with c1:
-    # Display static structure image (make sure dipep.png is in your repo)
+    # Visible figure in the body (ensure dipep.png exists in the repo root)
     st.image(
         "dipep.png",
-        caption="Alanine dipeptide: a minimal backbone with φ and ψ dihedrals.",
+        caption="Alanine dipeptide: minimal backbone with φ and ψ dihedrals.",
         use_container_width=True,
     )
 
 with c2:
     st.markdown(
         """
-        The alanine dipeptide backbone is governed by two dihedral angles:
+        Alanine dipeptide is the canonical **testbed for conformational sampling**.
 
-        - **φ (phi)**: rotation around the N–Cα bond (C(i−1)–N–Cα–C)
-        - **ψ (psi)**: rotation around the Cα–C bond (N–Cα–C–N(i+1))
+        Its backbone is governed by two dihedral angles:
 
-        Together, (φ, ψ) define a **2D conformational landscape** with familiar regions such as
-        the α and β basins. Because the molecule is so small, we can:
+        - **φ (phi)**: rotation about the N–Cα bond (C(i−1)–N–Cα–C)
+        - **ψ (psi)**: rotation about the Cα–C bond (N–Cα–C–N(i+1))
 
-        - sample this landscape thoroughly,
-        - compare vacuum vs solvent,
-        - and test different enhanced sampling approaches.
+        Together, \\((\\phi, \\psi)\\) define a compact yet non-trivial conformational landscape
+        with distinct minima (α, β, etc.) visible on a **Ramachandran-like 2D free energy surface**.
 
-        In the sections below (you will add them next), we will:
-        - set up REMD for alanine dipeptide in vacuum,
-        - copy a python code to generate and plot the free energy plots
-        - or (optionally) load the resulting data into this app to generate clean, publication-ready free energy plots.
+        Why this system?
+
+        - It is small enough that you can afford enhanced sampling methods.
+        - The φ/ψ landscape is well-characterized in the literature, so you can check if your
+          force field + sampling protocol behave sensibly.
+        - Subtle differences (e.g. vacuum vs solvent, different force fields, different biasing
+          schemes) show up clearly in the free energy profiles.
+
+        All of this makes alanine dipeptide an ideal didactic and diagnostic system for learning
+        **Replica Exchange MD** and **metadynamics** before scaling to larger biomolecules.
         """,
         unsafe_allow_html=True,
     )
@@ -131,50 +166,49 @@ with c2:
 st.markdown("---")
 
 # ================== REQUIREMENTS ==================
-st.subheader("What you need to follow and reproduce this tutorial")
+st.subheader("Reproducing this tutorial: what you need")
 
 st.markdown(
     """
-    To actually run the simulations on your own machine or cluster and then use this app
-    for analysis, you will need a few components. We keep them explicit so everything is reproducible.
-    """,
+    To follow the workflow on your own machine or cluster and then use this app for visualization,
+    you will need the following components.
+    """
 )
 
 st.markdown(
     """
-    ### 1. GROMACS with MPI support
+    #### 1. GROMACS with MPI support
 
-   You will use GROMACS for energy minimization, REMD, metadynamics-compatible runs, and basic analysis.
+    You will use **GROMACS** for building the system, minimization, REMD, and trajectory handling.
+    Install a recent version with MPI enabled using the official guide:
 
-    Please install a recent **GROMACS** version with MPI enabled, following the official guide:
-    """,
-)
-st.markdown(
-    """
-    ▶️ **GROMACS installation guide**  
     <https://manual.gromacs.org/current/install-guide/index.html>
     """
 )
 
 st.markdown(
     """
-    ### 2. PLUMED patched into GROMACS
+    #### 2. PLUMED patched into GROMACS
 
-    To bias φ/ψ and analyze complex collective variables, you will need **PLUMED** compiled with GROMACS.
+    To perform metadynamics and handle collective variables (φ, ψ), compile **PLUMED**
+    with your GROMACS build.
 
-    Useful resources:
-    - PLUMED installation: <https://www.plumed.org/doc-v2.9/user-doc/html/_installation.html>  
-    - Example of PLUMED + GROMACS usage: <https://www.plumed.org/doc-v2.9/user-doc/html/masterclass-21-5.html>
+    Useful references:
+
+    - PLUMED installation:
+      <https://www.plumed.org/doc-v2.9/user-doc/html/_installation.html>  
+    - Example notes for PLUMED + GROMACS:
+      <https://www.plumed.org/doc-v2.9/user-doc/html/masterclass-21-5.html>
     """
 )
 
 st.markdown(
     """
-    ### 3. Alanine dipeptide starting structure
+    #### 3. Alanine dipeptide starting structure
 
-    We use a capped Ace–Ala–Nme dipeptide (`dipep.pdb`) as the starting point.
+    This tutorial uses a capped Ace–Ala–Nme dipeptide (`dipep.pdb`) as the starting point.
 
-    Click below to download the exact structure used in this tutorial:
+    Click below to download exactly the structure used here:
     """,
 )
 
@@ -199,44 +233,42 @@ st.markdown(
 
 st.markdown(
     """
-    You can inspect this in PyMOL, VMD, ChimeraX, or any viewer to connect the geometry you see
-    with the φ/ψ angles and the landscapes we will compute.
+    You can inspect this file in PyMOL, VMD, ChimeraX, or any molecular viewer to connect the
+    geometry you see with the φ/ψ angles and the landscapes we will compute.
     """
 )
 
 st.markdown(
     """
-    ### 4. Python analysis environment
+    #### 4. Python environment for analysis
 
-    This Streamlit app assumes:
+    For local use (or backing this Streamlit app), you should have:
+
     - `streamlit`
     - `numpy`
     - `pandas`
     - `matplotlib`
 
-    (Already listed in your `requirements.txt`.)
+    These go into your `requirements.txt` for deployment on Streamlit Community Cloud.
     """
 )
 
 st.markdown(
     """
-    ### 5. What this app will help you do
+    #### 5. What this app will do (next sections)
 
-    In the next sections (which you’ll add under this header), this app will:
+    Below this introduction (in subsequent sections you add), this app is intended to:
 
-    - Show ready-to-use **REMD** and **metadynamics** setup snippets for alanine dipeptide.
-    - Let you **upload**:
-      - dihedral time series (φ, ψ),
-      - PLUMED `fes_psi_phi` outputs,
-      - or COLVAR-style data.
-    - Automatically generate:
+    - present annotated, copy-pasteable REMD and metadynamics setup blocks for alanine dipeptide,
+    - let you upload your own outputs (e.g. `COLVAR`, `fes_psi_phi.dat`, φ/ψ time series),
+    - automatically generate:
       - 2D FES(φ, ψ) heatmaps,
       - 1D profiles F(φ) and F(ψ),
-      - figures clean enough for lab meetings and slides.
+      - clean figures ready for talks, reports, or publications.
 
-    This page is your **landing + context**. Below it, you can now start adding:
-    - a “Simulation setup” section,
-    - an “Upload & visualize” section,
-    - and side-by-side comparisons (vacuum vs solvent, force field changes, etc.).
+    This page is your conceptual and practical starting point. From here, you can extend the app with:
+    - a **Simulation Setup** tab (REMD + MetaD scripts),
+    - an **Upload & Plot** tab (interactive analysis),
+    - and comparison views (vacuum vs solvent, different force fields, etc.).
     """
 )
