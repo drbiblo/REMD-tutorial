@@ -53,7 +53,7 @@ with left:
         Transitions that require crossing even moderate free-energy barriers become rare
         on accessible timescales. As a result:
 
-        - free energy profiles \(F(\phi)\), \(F(\psi)\), or \(F(\phi,\psi)\) built from a single
+        - free energy profiles phi, psi, or phi,psi built from a single
           300 K trajectory are often **noisy, biased, or incomplete**;
         - important conformational states may be severely undersampled or completely missed.
         """,
@@ -90,8 +90,7 @@ st.markdown(
     trajectory that has not seen enough of phase space.
 
     **Replica Exchange Molecular Dynamics (REMD)** tackles this by running multiple replicas
-    of the *same* system at different temperatures
-    \\(T_1 < T_2 < \\dots < T_N\\) simultaneously.
+    of the *same* system at different temperatures simultaneously.
 
     - High-temperature replicas explore conformational space broadly and cross barriers more easily.
     - Low-temperature replicas retain sharp, physically relevant distributions.
@@ -102,28 +101,28 @@ st.markdown(
     energy distributions, the exchange probabilities (typically on the order of a few tenths)
     are high enough that configurations can perform a **random walk in temperature space**:
 
-    - a configuration heats up → crosses a barrier in \\((\\phi, \\psi)\\),
+    - a configuration heats up → crosses a barrier in phi, psi,
     - then cools back down → bringing new conformations into the 300 K ensemble.
 
     The payoff is that your **lowest-temperature replica** inherits transitions that would be
     extremely rare in plain MD, yielding **smoother, better-converged 1D and 2D free energy
-    surfaces** along \\(\\phi\\) and \\(\\psi\\).
+    surfaces** along phi and psi.
 
     **Metadynamics** approaches the same problem from a different direction. Instead of changing
     temperature, we:
 
-    - identify slow **collective variables** (here \\(\\phi\\) and \\(\\psi\\)),
+    - identify slow **collective variables** here phi and psi,
     - periodically deposit repulsive Gaussian hills where the system has visited in CV space,
     - progressively fill free-energy wells, forcing exploration of new regions.
 
     Under appropriate settings (e.g. well-tempered metadynamics), the accumulated bias
-    approximates \\(-F(\\phi, \\psi)\\), so you can reconstruct the free energy surface directly.
-    For alanine dipeptide, biasing \\(\\phi\\) and \\(\\psi\\) is natural and highly targeted.
+    approximates phi, psi, so you can reconstruct the free energy surface directly.
+    For alanine dipeptide, biasing phi and psi is natural and highly targeted.
 
     In this tutorial, alanine dipeptide provides a controlled playground to:
 
     - build and test a sensible REMD temperature ladder,
-    - observe how replica exchanges enhance sampling in \\(\\phi/\\psi\\) space,
+    - observe how replica exchanges enhance sampling in phi/psi space,
     - and compare these results with metadynamics-based reconstructions of the same landscape.
     """
 )
@@ -371,7 +370,7 @@ st.markdown(
     We now define a minimal NVT `.mdp` template for each replica.
     Here we set:
     - `dt = 0.002 ps`
-    - `nsteps = 1000000` (2 ns; adjust for your needs)
+    - `nsteps = 1000000` (20 ns; adjust for your needs)
     - no pressure coupling (vacuum),
     - no constraints (simple small system).
     """
@@ -381,7 +380,7 @@ st.code(
     r"""cat > nvt_template.mdp << 'EOF'
 integrator            = md
 dt                    = 0.002
-nsteps                = 1000000
+nsteps                = 10000000
 ; outputs
 nstxout-compressed    = 5000
 nstenergy             = 1000
@@ -595,12 +594,12 @@ This means:
 - Each is running with `Using 1 MPI process` and `Using 2 OpenMP threads`
   — exactly what we requested with `-np 4` and `OMP_NUM_THREADS=2`.
 - For each replica you will see e.g.:
-  `1000000 steps,   2000.0 ps.`
-  which confirms: **1,000,000 steps × 0.002 ps = 2000 ps (2 ns)** per replica.
+  `10000000 steps,   20000.0 ps.`
+  which confirms: **10,000,000 steps × 0.002 ps = 20000 ps (20 ns)** per replica.
 
 Near the end, lines like:
 
-- `step 999900, remaining wall clock time: ...`
+- `step 9999000, remaining wall clock time: ...`
 
 indicate that the replicas are approaching completion. In the next steps of the tutorial,
 we will use the `remd.log` files to inspect exchange probabilities and then demultiplex
