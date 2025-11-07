@@ -806,7 +806,7 @@ plumed driver --mf_xtc 0_remd_demux.xtc --plumed plumed.dat""",
 st.image(
     "screenshots/screenshot13.png",
     caption="Running PLUMED driver on a demultiplexed trajectory.",
-    width=180,
+    width=800,
 )
 
 st.markdown(
@@ -833,7 +833,7 @@ st.code(
 st.image(
     "screenshots/screenshot14.png",
     caption="Example COLVAR view (time vs ϕ, ψ in radians).",
-    width=1000,
+    width=500,
 )
 
 st.markdown(
