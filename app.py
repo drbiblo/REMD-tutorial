@@ -354,7 +354,7 @@ gmx_mpi mdrun  -v -deffnm min""",
 st.image(
     "screenshots/screenshot4.png",
     caption="Minimization run: checking for convergence and stability.",
-    use_container_width=True,
+    width=500,
 )
 
 # ---------- STEP 5 ----------
@@ -457,7 +457,7 @@ gmx_mpi grompp -f 3/nvt.mdp -p 3/topol.top -c 3/mini.gro -o 3/remd.tpr -maxwarn 
 st.image(
     "screenshots/screenshot10.png",
     caption="Successful generation of replica TPR files for REMD.",
-    use_container_width=True,
+    width=500,
 )
 
 # ---------- STEP 11 ----------
@@ -668,7 +668,7 @@ st.code(
 st.image(
     "screenshots/screenshot12.png",
     caption="Average exchange probabilities table (from REMD.log).",
-    use_container_width=True,
+    width=500,
 )
 
 st.markdown(
@@ -745,7 +745,7 @@ plt.show()""",
 st.image(
     "screenshots/PE_overlap.png",
     caption="Potential energy overlap across replicas. Substantial overlap → healthy exchange acceptance.",
-    width=300
+    width=500
 )
 
 st.markdown(
@@ -833,7 +833,7 @@ st.code(
 st.image(
     "screenshots/screenshot14.png",
     caption="Example COLVAR view (time vs ϕ, ψ in radians).",
-    use_container_width=True,
+    width=500,
 )
 
 st.markdown(
@@ -940,7 +940,7 @@ plt.show()""",
 st.image(
     "screenshots/remd_phi_psi.png",
     caption="Example 1D ΔF(ϕ) and ΔF(ψ) profiles.",
-    width=180,
+    width=500,
 )
 
 st.markdown("**Plot the 2D FES (ϕ, ψ):**")
@@ -1027,7 +1027,7 @@ plt.show()""",
 st.image(
     "screenshots/2D_FES.png",
     caption="Example 2D FES in (ϕ, ψ).",
-    width=180,
+    width=500,
 )
 
 st.markdown("---")
