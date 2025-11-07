@@ -37,32 +37,43 @@ left, right = st.columns([1.6, 1.4])
 with left:
     st.subheader("Why this tutorial?")
 
-    st.markdown(
-        """
-        Modern molecular simulations do more than generate pretty trajectories — they let us
-        **quantify** how stable different conformations are via **free energy profiles**.
+  st.markdown(
+    """
+    In a standard single-temperature MD run (e.g. 300 K), alanine dipeptide tends to rattle
+    inside one or two basins for a long time. Crossings between metastable states in the
+    (φ, ψ) landscape can become **rare events**, so any free energy profile you estimate
+    from such a trajectory is at risk of being incomplete or biased.
 
-        However, a straightforward molecular dynamics (MD) run at a single temperature often:
+    **Replica Exchange Molecular Dynamics (REMD)** tackles this by simulating multiple
+    replicas of the *same* system at different temperatures:
+    \\(T_1 < T_2 < \\dots < T_N\\). At regular intervals, neighboring replicas attempt to
+    **exchange configurations**, with a Metropolis acceptance rule chosen so that each
+    temperature still samples its correct Boltzmann ensemble.
 
-        - lingers in one local minimum,
-        - rarely crosses important barriers,
-        - and can give a misleading picture of the underlying landscape.
+    A well-designed temperature ladder ensures:
+    - sufficient **overlap of potential energy distributions** between neighboring replicas,
+    - **reasonable exchange probabilities** (typically on the order of 20–40%),
+    - and the ability for configurations to **diffuse in temperature space**:
+      a structure can move to a higher \\(T\\), cross a barrier in φ/ψ, then return to lower
+      \\(T\\) carrying that new conformation with it.
 
-        **Replica Exchange Molecular Dynamics (REMD)** and **metadynamics** are enhanced sampling
-        strategies that help us overcome these limitations. They accelerate exploration of
-        conformational space and allow us to reconstruct smoother, more reliable
-        **1D and 2D free energy surfaces**.
+    Practically, this means the lowest-temperature replica (e.g. 300 K) benefits from
+    barrier-crossing events that would be extremely rare in plain MD, leading to
+    **smoother, better converged 1D and 2D free energy surfaces** along φ and ψ.
 
-        In this tutorial, we use the classic test system
-        <b>alanine dipeptide (Ace–Ala–Nme)</b> to demonstrate:
+    **Metadynamics** provides a complementary route: instead of changing temperature, we
+    introduce a time-dependent bias along chosen collective variables (here φ and ψ).
+    By depositing Gaussians in visited regions of CV space, metadynamics gradually fills
+    free-energy wells and forces exploration of new basins. In the long-time limit,
+    the accumulated bias approximates \\(-F(\\phi, \\psi)\\), giving direct access to the
+    free energy landscape.
 
-        - how to set up a vacuum REMD simulation,
-        - how φ (phi) and ψ (psi) backbone angles define conformations,
-        - how to obtain 2D FES(φ, ψ),
-        - and how to project that onto 1D profiles F(φ) and F(ψ).
-        """,
-        unsafe_allow_html=True,
-    )
+    In this tutorial, alanine dipeptide serves as a clean playground to:
+    - construct a sensible REMD temperature ladder,
+    - observe how replica exchanges enhance sampling in φ/ψ space,
+    - and compare those results with 2D metadynamics-based free energy reconstructions.
+    """
+)
 
 with right:
     st.subheader("A compact, visual model system")
