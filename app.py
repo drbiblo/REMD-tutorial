@@ -606,3 +606,442 @@ st.image(
     caption="Example REMD output: four simulations (replicas) detected and propagated as a composite multi-simulation job.",
     use_container_width=True,
 )
+
+# ================== 13. POST-SIMULATION: EXCHANGE STATS & PE OVERLAP ==================
+st.subheader("13. Checking average probabilities in the replica exchange and energy overlap")
+
+st.markdown(
+    """
+    After REMD completes, first combine the per-replica logs and generate the
+    demultiplexing maps that “unshuffle” trajectories.
+    """,
+)
+
+st.code(
+    """# Merge per-replica logs
+cat 0/remd.log 1/remd.log 2/remd.log 3/remd.log > REMD.log
+
+# Parse exchanges and build maps for demultiplexing
+demux.pl REMD.log""",
+    language="bash",
+)
+
+st.markdown(
+    """
+    **What `demux.pl` does:**  
+    It scans the combined `REMD.log` for all exchange attempts/acceptances and writes:
+    - `replica_index.xvg` → which trajectory index belongs to each replica over time (**used by `trjcat -demux`**).
+    - `replica_temp.xvg` → the temperature each replica followed vs time.
+
+    Below is an example of the console printout you’ll see (your counts may differ).
+    """,
+)
+
+st.code(
+    """demux.pl REMD.log
+-----------------------------------------------------------------
+Going to read a file containing the exchange information from
+your mdrun log file (REMD.log).
+This will produce a file (replica_index.xvg) suitable for
+demultiplexing your trajectories using trjcat,
+as well as a replica temperature file (replica_temp.xvg).
+Each entry in the log file will be copied 0 times.
+-----------------------------------------------------------------
+There are 4 replicas.
+Finished writing replica_index.xvg and replica_temp.xvg with 39997 lines""",
+    language="text",
+)
+
+st.markdown("Now inspect the **average exchange probabilities** (screenshot will show a small table):")
+
+st.code(
+    """grep -A7 "average probabilities" REMD.log""",
+    language="bash",
+)
+
+st.image(
+    "screenshots/screenshot12.png",
+    caption="Average exchange probabilities table (from REMD.log).",
+    use_container_width=True,
+)
+
+st.markdown(
+    """
+    **How to read this:**
+    - The **average probabilities** near 0.2–0.4 (20–40%) between neighbors are typically healthy for mixing.
+    - **Number of exchanges** tells how many successful swaps occurred; more accepted swaps → better replica diffusion.
+    - If probabilities are too low (≈0–10%), temperature spacing is likely too wide; add more replicas or tighten spacing.
+    """,
+)
+
+st.markdown("---")
+st.markdown("**Potential Energy (PE) overlap**")
+
+st.markdown(
+    """
+    Adjacent replicas should have **overlapping potential-energy distributions**. Without overlap,
+    exchanges rarely accept. Extract PE from each replica and make a quick histogram overlay:
+    """,
+)
+
+st.code(
+    """# Create a folder to store processed data
+mkdir -p PE_combined
+
+# Extract Potential energy time series from each replica (interactive "Potential" selection)
+for i in 0 1 2 3; do
+  echo Potential | gmx_mpi energy -f $i/remd.edr -s $i/remd.tpr -o PE_combined/PE_${i}.xvg
+done
+
+# Convert to plain text and combine into one file: Time  Potential  Replica
+: > PE_combined/all_PE.txt
+for i in 0 1 2 3; do
+  awk '!/^[@#]/ {print $1, $2, "'$i'"}' PE_combined/PE_${i}.xvg >> PE_combined/all_PE.txt
+done""",
+    language="bash",
+)
+
+st.markdown("**Python to plot PE overlap (one curve per replica):**")
+
+st.code(
+    """import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ====== INPUT ======
+PE_FILE = "PE_combined/all_PE.txt"
+
+# ====== LOAD POTENTIAL ENERGY DATA ======
+# Expecting columns: Time  Potential  Replica
+df_pe = pd.read_csv(PE_FILE, sep=r"\\s+", header=None, names=["Time", "Potential", "Replica"])
+
+# ====== PLOT POTENTIAL ENERGY OVERLAP ======
+plt.figure(figsize=(5, 4))  # square-ish for slides
+
+for r, g in df_pe.groupby("Replica"):
+    counts, bins = np.histogram(g["Potential"], bins=200, density=True)
+    centers = 0.5 * (bins[1:] + bins[:-1])
+    plt.plot(centers, counts, lw=1.8, label=f"Replica {int(r)}")
+
+plt.title("Potential Energy Overlap", fontsize=12)
+plt.xlabel("Potential Energy (kJ/mol)", fontsize=10)
+plt.ylabel("Probability Density", fontsize=10)
+plt.grid(alpha=0.3)
+plt.legend(title="Replica", fontsize=8)
+plt.tight_layout()
+
+# To save:
+plt.savefig("PE_overlap.png", dpi=300, bbox_inches="tight")
+plt.show()""",
+    language="python",
+)
+
+st.image(
+    "screenshots/PE_overlap.png",
+    caption="Potential energy overlap across replicas. Substantial overlap → healthy exchange acceptance.",
+    use_container_width=True,
+)
+
+st.markdown(
+    """
+    **Goal:** Neighboring PE curves should **overlap**. If not, exchanges will be rare → poor mixing.
+    Typical fixes are to **narrow temperature gaps** or **increase replica count**.
+    """
+)
+
+st.markdown("---")
+
+# ================== 14. DEMULTIPLEX TRAJECTORIES ==================
+st.subheader("14. Demultiplex (unshuffle) trajectories per replica")
+
+st.markdown(
+    """
+    Use `replica_index.xvg` from `demux.pl` to “stitch” each replica’s physical
+    trajectory through time (constant *replica index*, changing temperatures underneath).
+    """,
+)
+
+st.code(
+    """# Demultiplex and split into one output per replica
+gmx_mpi trjcat -f 0/remd.xtc 1/remd.xtc 2/remd.xtc 3/remd.xtc \\
+  -demux replica_index.xvg -split""",
+    language="bash",
+)
+
+st.markdown(
+    """
+    This produces **four** demultiplexed trajectories (one per replica path):
+    - `0_remd_demux.xtc`  
+    - `1_remd_demux.xtc`  
+    - `2_remd_demux.xtc`  
+    - `3_remd_demux.xtc`  
+
+    These are now continuous in time for each **replica index**, ideal for downstream CV analysis.
+    """
+)
+
+st.markdown("---")
+
+# ================== 15. REPLAY WITH PLUMED DRIVER → COLVAR ==================
+st.subheader("15. Recompute collective variables (CVs) with PLUMED driver")
+
+st.markdown(
+    """
+    Replay a demultiplexed trajectory with your `plumed.dat` to compute CVs (e.g., ϕ and ψ).
+    """,
+)
+
+st.code(
+    """# Example: compute CVs for replica 0's demultiplexed trajectory
+plumed driver --mf_xtc 0_remd_demux.xtc --plumed plumed.dat""",
+    language="bash",
+)
+
+st.image(
+    "screenshots/screenshot13.png",
+    caption="Running PLUMED driver on a demultiplexed trajectory.",
+    use_container_width=True,
+)
+
+st.markdown(
+    """
+    **Output:** `COLVAR` (default name) containing time and all CVs defined in `plumed.dat`.
+    A snippet might look like:
+    """,
+)
+
+st.code(
+    """#! FIELDS time phi psi
+#! SET min_phi -pi
+#! SET max_phi  pi
+#! SET min_psi -pi
+#! SET max_psi  pi
+0.000000  -3.115130  -3.133553
+10.000000 -1.398061   1.505671
+20.000000 -2.392560   2.029399
+30.000000 -1.835517  -2.869768
+...""",
+    language="text",
+)
+
+st.image(
+    "screenshots/screenshot14.png",
+    caption="Example COLVAR view (time vs ϕ, ψ in radians).",
+    use_container_width=True,
+)
+
+st.markdown(
+    """
+    **How to read it:**  
+    - Header lines (`#! FIELDS ...`) define column names.  
+    - Values are in **radians** by default.  
+    - Each row is a single frame: `time  phi  psi`.
+    """,
+)
+
+st.markdown("---")
+
+# ================== 16. FROM COLVAR → 1D/2D FES ==================
+st.subheader("16. Using COLVAR to generate ϕ and ψ free-energy profiles (1D & 2D)")
+
+st.markdown("**Build 1D and 2D histograms with PLUMED:**")
+
+st.code(
+    """# 1D: ϕ
+plumed sum_hills --histo COLVAR --idw phi --sigma 0.35 --kt 2.5 --outhisto fes_phi.dat
+
+# 1D: ψ
+plumed sum_hills --histo COLVAR --idw psi --sigma 0.35 --kt 2.5 --outhisto fes_psi.dat
+
+# 2D: (ϕ, ψ)
+plumed sum_hills --histo COLVAR --idw phi,psi \\
+  --min -3.1416,-3.1416 --max  3.1416, 3.1416 --bin 180,180 \\
+  --sigma 0.35,0.35 --kt 2.494 --outhisto fes_2D.dat""",
+    language="bash",
+)
+
+st.markdown("**Plot 1D ϕ & ψ profiles (ΔF, shifted to minimum = 0):**")
+
+st.code(
+    """import numpy as np
+import matplotlib.pyplot as plt
+
+# ====== INPUT FILES ======
+PHI_FILE  = "fes_phi.dat"
+PSI_FILE  = "fes_psi.dat"
+OUT_FIG   = "remd_phi_psi.png"
+DPI       = 300
+
+# ====== HELPER ======
+def load_fes_xy(path):
+    x_vals, F_vals = [], []
+    with open(path, "r") as f:
+        for line in f:
+            s = line.strip()
+            if not s or s.startswith("#") or s.startswith("!") or "#!" in s:
+                continue
+            parts = s.split()
+            if len(parts) >= 2:
+                try:
+                    x_vals.append(float(parts[0]))
+                    F_vals.append(float(parts[1]))
+                except ValueError:
+                    continue
+    x = np.array(x_vals, dtype=float)
+    F = np.array(F_vals, dtype=float)
+    if F.size:
+        F = F - F.min()  # shift to ΔF
+    return x, F
+
+# ====== LOAD FES ======
+phi_x, phi_F = load_fes_xy(PHI_FILE)
+psi_x, psi_F = load_fes_xy(PSI_FILE)
+
+# Plot in degrees
+phi_x_deg = np.degrees(phi_x)
+psi_x_deg = np.degrees(psi_x)
+
+# ====== PLOT (2 x 1) ======
+fig, axes = plt.subplots(2, 1, figsize=(5, 6), dpi=DPI)
+fig.suptitle("1D Free Energy Profiles (REMD VACUUM)", fontsize=12, fontweight="bold")
+
+# (1) 1D PHI
+ax1 = axes[0]
+ax1.plot(phi_x_deg, phi_F, lw=2)
+ax1.set_title("ϕ Free Energy", fontsize=11)
+ax1.set_xlabel("Dihedral ϕ (degrees)", fontsize=10)
+ax1.set_ylabel("ΔF (kJ/mol)", fontsize=10)
+ax1.set_xlim(-180, 180)
+ax1.set_xticks(np.arange(-180, 181, 60))
+ax1.grid(True, alpha=0.3)
+
+# (2) 1D PSI
+ax2 = axes[1]
+ax2.plot(psi_x_deg, psi_F, lw=2)
+ax2.set_title("ψ Free Energy", fontsize=11)
+ax2.set_xlabel("Dihedral ψ (degrees)", fontsize=10)
+ax2.set_ylabel("ΔF (kJ/mol)", fontsize=10)
+ax2.set_xlim(-180, 180)
+ax2.set_xticks(np.arange(-180, 181, 60))
+ax2.grid(True, alpha=0.3)
+
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+# plt.savefig(OUT_FIG, dpi=DPI, bbox_inches="tight")
+plt.show()""",
+    language="python",
+)
+
+st.image(
+    "screenshots/remd_phi_psi.png",
+    caption="Example 1D ΔF(ϕ) and ΔF(ψ) profiles.",
+    use_container_width=True,
+)
+
+st.markdown("**Plot the 2D FES (ϕ, ψ):**")
+
+st.code(
+    """import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import re
+
+FES_FILE  = "fes_2D.dat"
+FIGSIZE   = 5.0
+DPI       = 300
+N_LEVELS  = 15
+
+def load_plumed_2d(path):
+    psi, phi, free = [], [], []
+    with open(path, "r") as fh:
+        for raw in fh:
+            line = raw.rstrip()
+            if not line:
+                continue
+            s = line.lstrip()
+            if s.startswith("#") or s.startswith("!"):
+                continue
+            if re.match(r"^\\d+\\s+#!", s):
+                continue
+            toks = s.split()
+            if len(toks) >= 5 and toks[0].isdigit():
+                toks = toks[1:]
+            if len(toks) < 3:
+                continue
+            try:
+                psi.append(float(toks[0]))
+                phi.append(float(toks[1]))
+                free.append(float(toks[2]))
+            except ValueError:
+                continue
+    return pd.DataFrame({"psi": psi, "phi": phi, "F": free})
+
+# Load & grid
+df = load_plumed_2d(FES_FILE)
+pivot = df.pivot_table(index="psi", columns="phi", values="F", aggfunc="mean")
+psi_vals = np.array(sorted(pivot.index))
+phi_vals = np.array(sorted(pivot.columns))
+Z = pivot.loc[psi_vals, phi_vals].values
+
+# Axes in degrees
+psi_deg = np.rad2deg(psi_vals)
+phi_deg = np.rad2deg(phi_vals)
+
+# Mask missing cells
+Zmask = np.ma.masked_invalid(Z)
+
+# Levels across data range
+vmin = np.nanmin(Zmask)
+vmax = np.nanmax(Zmask)
+levels = np.linspace(vmin, vmax, N_LEVELS)
+
+# Plot
+fig, ax = plt.subplots(figsize=(FIGSIZE, FIGSIZE), dpi=DPI)
+cf = ax.contourf(phi_deg, psi_deg, Zmask, levels=levels)
+c  = ax.contour (phi_deg, psi_deg, Zmask, levels=levels, linewidths=0.6)
+
+cb = fig.colorbar(cf, ax=ax, orientation='vertical', pad=0.03, fraction=0.035, shrink=0.80, aspect=25)
+cb.set_label("Free energy (kJ/mol)", fontsize=9)
+cb.ax.tick_params(labelsize=8)
+
+ax.clabel(c, inline=True, fontsize=7, fmt="%.0f")
+ax.set_xlabel("φ (deg)", fontsize=11)
+ax.set_ylabel("ψ (deg)", fontsize=11)
+ticks = np.arange(-180, 181, 60)
+ax.set_xticks(ticks); ax.set_yticks(ticks)
+ax.tick_params(labelsize=9)
+ax.set_aspect('equal', adjustable='box')
+ax.set_title("2D FES 200ns AMBER (WATER)", fontsize=10)
+
+plt.tight_layout()
+plt.savefig("2D_FES.png", dpi=600, bbox_inches="tight")
+plt.show()""",
+    language="python",
+)
+
+st.image(
+    "screenshots/2D_FES.png",
+    caption="Example 2D FES in (ϕ, ψ).",
+    use_container_width=True,
+)
+
+st.markdown("---")
+
+# ================== CONCLUSION ==================
+st.subheader("Conclusion")
+
+st.markdown(
+    """
+    **Summary of the pipeline:**
+    1. Combined logs → ran `demux.pl` to build `replica_index.xvg` / `replica_temp.xvg`.
+    2. Verified **exchange health** (average probabilities and counts).
+    3. Assessed **potential-energy overlap**; substantial overlap → healthy exchanges.
+    4. **Demultiplexed** trajectories with `trjcat -demux -split` to obtain `0–3_remd_demux.xtc`.
+    5. Replayed trajectories with **PLUMED driver** to compute CVs → `COLVAR`.
+    6. Built **1D/2D FES** from `COLVAR` using `plumed sum_hills` and plotted ϕ, ψ and (ϕ, ψ).
+
+    **Why this matters:** Good REMD shows frequent accepted swaps and overlapping energies,
+    enabling configurations to perform a **random walk in temperature space** and improving
+    sampling of the φ/ψ landscape. The demultiplex → CV → FES chain then converts that
+    sampling into **clean, interpretable free-energy profiles** suitable for analysis and slides.
+    """
+)
