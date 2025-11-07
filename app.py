@@ -833,7 +833,7 @@ st.code(
 st.image(
     "screenshots/screenshot14.png",
     caption="Example COLVAR view (time vs ϕ, ψ in radians).",
-    width=500,
+    width=1000,
 )
 
 st.markdown(
